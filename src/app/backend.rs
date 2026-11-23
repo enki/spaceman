@@ -77,6 +77,11 @@ pub(super) trait WorkspaceBackend {
         &mut self,
         memory: &crate::window_memory::WindowMemory,
     ) -> Result<(), String>;
+    fn persist_workspace_monitor(
+        &mut self,
+        workspace: WorkspaceId,
+        selector: &DisplaySelector,
+    ) -> Result<(), String>;
     /// Best-effort diagnostics; a journal failure never affects management.
     fn journal(&mut self, line: &crate::journal::JournalLine);
     /// Waits briefly for state written in the background to reach the disk.
@@ -214,6 +219,15 @@ impl WorkspaceBackend for MacWorkspaceBackend {
         memory: &crate::window_memory::WindowMemory,
     ) -> Result<(), String> {
         self.write_later(window_memory_path(), memory, "window memory")
+    }
+
+    fn persist_workspace_monitor(
+        &mut self,
+        workspace: WorkspaceId,
+        selector: &DisplaySelector,
+    ) -> Result<(), String> {
+        let path = crate::config::config_path().ok_or("HOME is unavailable")?;
+        crate::config::save_workspace_monitor_at(&path, workspace, selector).map(|_| ())
     }
 
     fn journal(&mut self, line: &crate::journal::JournalLine) {

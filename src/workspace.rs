@@ -140,6 +140,13 @@ pub enum DisplaySelector {
     Preferred(String),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DisplayTarget {
+    Next,
+    Prev,
+    Selector(DisplaySelector),
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub(crate) struct WorkspaceState {
     active: Vec<(DisplaySelector, WorkspaceId)>,
@@ -270,6 +277,15 @@ impl DisplaySelector {
             value => Self::Preferred(value.to_owned()),
         }
     }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Main => "main",
+            Self::Secondary => "secondary",
+            Self::Preferred(value) => value.as_str(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -289,11 +305,7 @@ impl Default for Workspaces {
         Self {
             engines: std::array::from_fn(|_| Engine::default()),
             assignments: std::array::from_fn(|index| {
-                if (5..WorkspaceId::NUMBERED_COUNT).contains(&index) {
-                    DisplaySelector::Secondary
-                } else {
-                    DisplaySelector::Main
-                }
+                Self::default_assignment(WorkspaceId::from_index(index))
             }),
             active: HashMap::from([
                 (DisplaySelector::Main, WorkspaceId::ONE),
@@ -408,6 +420,14 @@ impl Workspaces {
     }
 
     #[must_use]
+    pub fn default_assignment(workspace: WorkspaceId) -> DisplaySelector {
+        match workspace.number() {
+            Some(number) if number >= 6 => DisplaySelector::Secondary,
+            _ => DisplaySelector::Main,
+        }
+    }
+
+    #[must_use]
     pub fn assignment(&self, workspace: WorkspaceId) -> &DisplaySelector {
         &self.assignments[workspace.index()]
     }
@@ -435,10 +455,79 @@ impl Workspaces {
             if let Some(replacement) = WorkspaceId::all().find(|candidate| {
                 self.is_enabled(*candidate) && self.assignment(*candidate) == &previous
             }) {
-                self.active.insert(previous, replacement);
+                self.active.insert(previous.clone(), replacement);
             } else {
                 self.active.remove(&previous);
             }
+        }
+        if self.previous.get(&previous).is_some_and(|candidate| {
+            *candidate == workspace || self.active.get(&previous) == Some(candidate)
+        }) {
+            self.previous.remove(&previous);
+        }
+    }
+
+    /// Moves `workspace` to `target`, making it active there (recording any
+    /// displaced active workspace on `target` as that display's previous
+    /// workspace) and promoting `source_replacement` on the lane `workspace`
+    /// left.
+    pub fn move_to_display(
+        &mut self,
+        workspace: WorkspaceId,
+        target: DisplaySelector,
+        source_replacement: Option<WorkspaceId>,
+    ) {
+        self.enable(workspace);
+        let source = self.assignments[workspace.index()].clone();
+        if source == target {
+            return;
+        }
+        self.assignments[workspace.index()] = target.clone();
+
+        let displaced = self.active.insert(target.clone(), workspace);
+        match displaced {
+            Some(previous) if previous != workspace => {
+                self.previous.insert(target, previous);
+            }
+            _ => {
+                if self.previous.get(&target) == Some(&workspace) {
+                    self.previous.remove(&target);
+                }
+            }
+        }
+
+        if self.active.get(&source) == Some(&workspace) {
+            let replacement = source_replacement
+                .filter(|candidate| {
+                    *candidate != workspace
+                        && self.is_enabled(*candidate)
+                        && self.assignment(*candidate) == &source
+                })
+                .or_else(|| {
+                    self.previous.get(&source).copied().filter(|candidate| {
+                        *candidate != workspace
+                            && self.is_enabled(*candidate)
+                            && self.assignment(*candidate) == &source
+                    })
+                })
+                .or_else(|| {
+                    WorkspaceId::all().find(|candidate| {
+                        self.is_enabled(*candidate) && self.assignment(*candidate) == &source
+                    })
+                });
+            match replacement {
+                Some(replacement) => {
+                    self.active.insert(source.clone(), replacement);
+                }
+                None => {
+                    self.active.remove(&source);
+                }
+            }
+        }
+        if self.previous.get(&source).is_some_and(|candidate| {
+            *candidate == workspace || self.active.get(&source) == Some(candidate)
+        }) {
+            self.previous.remove(&source);
         }
     }
 

@@ -128,6 +128,7 @@ Core controls:
 | `Option+A` ... `Option+Z` | Switch to a configured named workspace |
 | `Option+Shift+A` ... `Option+Shift+Z` | Move the focused window to a configured named workspace |
 | `Option+Tab` | Return to the previous workspace on the focused display |
+| `Option+Shift+Tab` | Move the focused workspace to the next display |
 | Option-backtick | Focus the next tiled window in the workspace |
 | `Option+H/J/K/L` | Focus left/down/up/right |
 | `Option+Shift+H/J/K/L` | Move the focused tile left/down/up/right |

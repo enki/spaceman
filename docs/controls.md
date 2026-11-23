@@ -13,6 +13,7 @@ fails after the old registrations are released, it pauses and reports `Hotkeys u
 | `Option+A` ... `Option+Z` | Switch to that configured named workspace |
 | Add `Shift` to a named workspace key | Move the focused window there without switching |
 | `Option+Tab` | Toggle the focused display's current/previous workspace |
+| `Option+Shift+Tab` | Move the focused workspace to the next display (wrapping left-to-right) |
 | Option-backtick | Focus the next tiled window, wrapping in stable workspace order |
 | `Option+H/J/K/L` | Focus the nearest tile left/down/up/right, including across displays |
 | `Option+Shift+H/J/K/L` | Move the focused tile in that direction |
@@ -107,6 +108,9 @@ spaceman ctl status
 spaceman ctl debug
 spaceman ctl switch 2
 spaceman ctl back-and-forth
+spaceman ctl move-workspace
+spaceman ctl move-workspace prev
+spaceman ctl move-workspace secondary
 spaceman ctl move 7
 spaceman ctl move-app com.tinyspeck.slackmacgap 6
 spaceman ctl focus left

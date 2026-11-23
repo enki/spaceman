@@ -16,6 +16,10 @@ fn actions() -> Vec<(WorkerAction, DirectAction)> {
         (WorkerAction::WorkspaceBackAndForth, |r, o, c| {
             r.workspace_back_and_forth(o, c)
         }),
+        (
+            WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Next),
+            |r, o, c| r.move_workspace_to_display(DisplayTarget::Next, o, c),
+        ),
         (WorkerAction::MoveFocused(WorkspaceId::SIX), |r, o, c| {
             r.move_focused(WorkspaceId::SIX, o, c)
         }),
@@ -201,6 +205,7 @@ fn control_acknowledgements_name_each_queued_action() {
             "retile queued",
             "switch to workspace 2 queued",
             "workspace back-and-forth queued",
+            "move workspace to display queued",
             "move to workspace 6 queued",
             "move app to workspace 6 queued",
             "focus cycle queued",

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{DisplaySelector, ObservedWindow, WorkspaceId, Workspaces};
 
@@ -22,7 +22,7 @@ impl Default for AppSettings {
 }
 
 /// Which release channel the in-app updater follows: `settings.update_channel`.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UpdateChannel {
     /// Public releases.
@@ -52,7 +52,7 @@ impl UpdateChannel {
 }
 
 /// How the Workspace HUD draws each workspace in its row: `settings.hud_style`.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum HudStyle {
     /// Each workspace as its layout, with an app icon in every tile; the current one larger.
@@ -287,9 +287,45 @@ impl Config {
         for workspace in self.named_workspaces() {
             workspaces.enable(workspace);
         }
-        for (workspace, selector) in &self.workspace_monitors {
-            workspaces.set_assignment(*workspace, selector.clone());
+        for workspace in WorkspaceId::all() {
+            if !workspaces.is_enabled(workspace) {
+                continue;
+            }
+            let target = self
+                .workspace_monitors
+                .iter()
+                .find(|(id, _)| *id == workspace)
+                .map_or_else(
+                    || Workspaces::default_assignment(workspace),
+                    |(_, selector)| selector.clone(),
+                );
+            workspaces.set_assignment(workspace, target);
         }
+    }
+
+    pub fn set_workspace_monitor(&mut self, workspace: WorkspaceId, selector: DisplaySelector) {
+        let should_clear = selector == Workspaces::default_assignment(workspace)
+            && (workspace.number().is_some() || self.has_workspace_route(workspace));
+        if should_clear {
+            self.workspace_monitors
+                .retain(|(existing, _)| *existing != workspace);
+            return;
+        }
+        if let Some((_, existing)) = self
+            .workspace_monitors
+            .iter_mut()
+            .find(|(existing, _)| *existing == workspace)
+        {
+            *existing = selector;
+        } else {
+            self.workspace_monitors.push((workspace, selector));
+        }
+    }
+
+    fn has_workspace_route(&self, workspace: WorkspaceId) -> bool {
+        self.rules
+            .iter()
+            .any(|rule| rule.action == WindowDisposition::Route(workspace))
     }
 
     pub fn named_workspaces(&self) -> impl Iterator<Item = WorkspaceId> + '_ {
@@ -370,6 +406,112 @@ pub fn load_path(path: &Path) -> Result<Config, String> {
     let source = std::fs::read_to_string(path)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
     parse_path(path, &source)
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct EditableConfig {
+    version: u32,
+    #[serde(default, skip_serializing_if = "EditableSettings::is_empty")]
+    settings: EditableSettings,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    rules: Vec<EditableRule>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    workspaces: Vec<EditableWorkspace>,
+}
+
+impl Default for EditableConfig {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            settings: EditableSettings::default(),
+            rules: Vec::new(),
+            workspaces: Vec::new(),
+        }
+    }
+}
+
+#[derive(Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct EditableSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hud: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hud_style: Option<HudStyle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    update_channel: Option<UpdateChannel>,
+}
+
+impl EditableSettings {
+    const fn is_empty(&self) -> bool {
+        self.hud.is_none() && self.hud_style.is_none() && self.update_channel.is_none()
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct EditableRule {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bundle_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    workspace: Option<WorkspaceId>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct EditableWorkspace {
+    workspace: WorkspaceId,
+    monitor: String,
+}
+
+/// Atomically updates `workspace`'s display assignment in `path`, clearing the
+/// `[[workspaces]]` override when it returns to the built-in default (while
+/// keeping named workspaces that have no route rule declared).
+pub fn save_workspace_monitor_at(
+    path: &Path,
+    workspace: WorkspaceId,
+    selector: &DisplaySelector,
+) -> Result<Config, String> {
+    let mut doc = match std::fs::read_to_string(path) {
+        Ok(source) => {
+            parse_path(path, &source)?;
+            toml::from_str::<EditableConfig>(&source)
+                .map_err(|error| format!("{}: {error}", path.display()))?
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => EditableConfig::default(),
+        Err(error) => return Err(format!("failed to read {}: {error}", path.display())),
+    };
+    let referenced_by_rule = doc
+        .rules
+        .iter()
+        .any(|rule| rule.workspace == Some(workspace));
+    let clear = *selector == Workspaces::default_assignment(workspace)
+        && (workspace.number().is_some() || referenced_by_rule);
+    if clear {
+        doc.workspaces.retain(|entry| entry.workspace != workspace);
+    } else {
+        let monitor = selector.as_str().to_owned();
+        if let Some(existing) = doc
+            .workspaces
+            .iter_mut()
+            .find(|entry| entry.workspace == workspace)
+        {
+            existing.monitor = monitor;
+        } else {
+            doc.workspaces
+                .push(EditableWorkspace { workspace, monitor });
+        }
+    }
+    let rendered = toml::to_string_pretty(&doc)
+        .map_err(|error| format!("failed to format config.toml: {error}"))?;
+    let parsed = Config::parse(&rendered)
+        .map_err(|error| format!("refusing to write invalid config.toml: {error}"))?;
+    crate::state_file::write_atomic(path, rendered.as_bytes())
+        .map_err(|error| format!("failed to write {}: {error}", path.display()))?;
+    Ok(parsed)
 }
 
 fn parse_path(path: &Path, source: &str) -> Result<Config, String> {
@@ -532,5 +674,44 @@ monitor = "main"
             assert_eq!(UpdateChannel::parse(channel.as_str()), Some(channel));
         }
         assert!(Config::parse("version = 1\n[settings]\nupdate_channel = \"beta\"\n").is_err());
+    }
+
+    #[test]
+    fn save_workspace_monitor_persists_overrides_and_clears_built_in_defaults() {
+        let dir = std::env::temp_dir().join(format!(
+            "spaceman-config-save-{}-{}",
+            std::process::id(),
+            now().as_nanos()
+        ));
+        let path = dir.join("config.toml");
+
+        let saved = save_workspace_monitor_at(&path, WorkspaceId::ONE, &DisplaySelector::Secondary)
+            .unwrap();
+        let mut workspaces = Workspaces::default();
+        saved.configure_workspaces(&mut workspaces);
+        assert_eq!(
+            workspaces.assignment(WorkspaceId::ONE),
+            &DisplaySelector::Secondary
+        );
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("monitor = \"secondary\""), "{written}");
+
+        let reset =
+            save_workspace_monitor_at(&path, WorkspaceId::ONE, &DisplaySelector::Main).unwrap();
+        reset.configure_workspaces(&mut workspaces);
+        assert_eq!(
+            workspaces.assignment(WorkspaceId::ONE),
+            &DisplaySelector::Main
+        );
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(!written.contains("[[workspaces]]"), "{written}");
+
+        let named = WorkspaceId::named('D').unwrap();
+        let kept = save_workspace_monitor_at(&path, named, &DisplaySelector::Main).unwrap();
+        assert_eq!(kept.named_workspaces().collect::<Vec<_>>(), vec![named]);
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.contains("workspace = \"D\""), "{written}");
+
+        drop(std::fs::remove_dir_all(dir));
     }
 }

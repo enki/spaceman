@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, ffi::c_void, ptr, sync::mpsc::Sender};
 pub(crate) use delivery::DeliveryWatch;
 
 use crate::{
-    Direction, ResizeDirection, WorkspaceId,
+    Direction, DisplayTarget, ResizeDirection, WorkspaceId,
     app::{Action, WorkerAction},
     keyboard_layout::{LayoutFingerprint, LayoutSnapshot, LogicalKey, SemanticKey},
 };
@@ -99,7 +99,7 @@ impl HotkeyPlan {
     }
 
     fn from_layout(enabled: &[WorkspaceId], layout: &LayoutSnapshot) -> Result<Self, String> {
-        let mut registrations = Vec::with_capacity(14 + enabled.len() * 2);
+        let mut registrations = Vec::with_capacity(15 + enabled.len() * 2);
         let claimed_letters = enabled
             .iter()
             .filter_map(|workspace| workspace.letter().map(|letter| letter.to_ascii_lowercase()))
@@ -173,6 +173,12 @@ impl HotkeyPlan {
                 OPTION_KEY,
                 WorkerAction::WorkspaceBackAndForth,
                 "workspace back-and-forth",
+            ),
+            (
+                LogicalKey::Semantic(SemanticKey::Tab),
+                OPTION_KEY | SHIFT_KEY,
+                WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Next),
+                "move workspace to next display",
             ),
             (
                 LogicalKey::Character('-'),
@@ -418,6 +424,10 @@ mod tests {
                 WorkerAction::WorkspaceBackAndForth,
             ),
             (
+                "move workspace to next display",
+                WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Next),
+            ),
+            (
                 "shrink layout",
                 WorkerAction::Resize(ResizeDirection::Shrink),
             ),
@@ -438,11 +448,19 @@ mod tests {
     }
 
     #[test]
-    fn full_plan_contains_all_thirty_four_registrations() {
+    fn full_plan_contains_all_thirty_five_registrations() {
         let enabled = WorkspaceId::numbered().collect::<Vec<_>>();
         let plan = HotkeyPlan::from_layout(&enabled, &layout()).unwrap();
-        assert_eq!(plan.registrations.len(), 34);
-        assert!(plan.registrations.capacity() >= 34);
+        assert_eq!(plan.registrations.len(), 35);
+        assert!(plan.registrations.capacity() >= 35);
+        let move_ws = plan
+            .registrations
+            .iter()
+            .find(|registration| {
+                registration.action == WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Next)
+            })
+            .unwrap();
+        assert_eq!(move_ws.modifiers, OPTION_KEY | SHIFT_KEY);
     }
 
     #[test]

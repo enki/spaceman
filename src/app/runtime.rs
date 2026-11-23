@@ -198,6 +198,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             action,
             WorkerAction::SwitchWorkspace(_)
                 | WorkerAction::WorkspaceBackAndForth
+                | WorkerAction::MoveWorkspaceToDisplay(_)
                 | WorkerAction::Swipe(..)
                 | WorkerAction::MoveFocused(_)
                 | WorkerAction::MoveApp(..)
@@ -209,6 +210,9 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             WorkerAction::SwitchWorkspace(workspace) => self.switch(workspace, outputs, cancelled),
             WorkerAction::WorkspaceBackAndForth => {
                 self.workspace_back_and_forth(outputs, cancelled)
+            }
+            WorkerAction::MoveWorkspaceToDisplay(target) => {
+                self.move_workspace_to_display(target, outputs, cancelled)
             }
             WorkerAction::Swipe(swipe, point) => self.swipe(swipe, point, outputs, cancelled),
             WorkerAction::MoveFocused(workspace) => {
@@ -729,45 +733,6 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
             failed,
             hud: None,
         }
-    }
-
-    /// Per display, its visible workspace and every other workspace holding windows.
-    fn workspace_menu(
-        &self,
-        visible: &[ResolvedWorkspace],
-        outputs: &macos::DisplayOutputs,
-    ) -> Vec<status_item::DisplayWorkspaces> {
-        outputs
-            .displays()
-            .iter()
-            .filter_map(|display| {
-                let current = visible
-                    .iter()
-                    .find(|resolved| resolved.display_id == display.id)
-                    .map(|resolved| resolved.workspace);
-                let workspaces = self
-                    .listed_workspaces(&display.id, current, outputs)
-                    .into_iter()
-                    .map(|workspace| {
-                        let mut apps = Vec::new();
-                        for window in self.workspaces.windows(workspace) {
-                            if !apps.contains(&window.app.pid) {
-                                apps.push(window.app.pid);
-                            }
-                        }
-                        status_item::MenuWorkspace {
-                            workspace,
-                            current: current == Some(workspace),
-                            apps,
-                        }
-                    })
-                    .collect::<Vec<_>>();
-                (!workspaces.is_empty()).then(|| status_item::DisplayWorkspaces {
-                    display: display.name.clone(),
-                    workspaces,
-                })
-            })
-            .collect()
     }
 
     /// A display's visible workspace and every other one holding windows, in order:

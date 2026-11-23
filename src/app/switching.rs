@@ -186,7 +186,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
         Ok(status)
     }
 
-    fn focus_workspace_entry(
+    pub(super) fn focus_workspace_entry(
         &mut self,
         workspace: WorkspaceId,
         windows: &[crate::PhysicalWindowId],
@@ -215,7 +215,7 @@ impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
     /// before they arrive would flash the bare desktop. Polling is
     /// confirmation-only; the restore write is re-issued only for windows
     /// that still have not arrived after [`REVEAL_REWRITE_INTERVAL`].
-    fn wait_for_reveal(
+    pub(super) fn wait_for_reveal(
         &mut self,
         incoming: &[crate::PhysicalWindowId],
         cancelled: &AtomicBool,

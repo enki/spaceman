@@ -558,6 +558,38 @@ fn moving_preserves_the_logical_slot() {
 }
 
 #[test]
+fn move_to_display_activates_on_target_and_promotes_source_previous() {
+    let mut workspaces = Workspaces::default();
+    workspaces.switch(WorkspaceId::THREE);
+    workspaces.switch(WorkspaceId::ONE);
+
+    workspaces.move_to_display(
+        WorkspaceId::ONE,
+        DisplaySelector::Secondary,
+        Some(WorkspaceId::THREE),
+    );
+
+    assert_eq!(
+        workspaces.assignment(WorkspaceId::ONE),
+        &DisplaySelector::Secondary
+    );
+    assert_eq!(
+        workspaces.active_for(&DisplaySelector::Secondary),
+        Some(WorkspaceId::ONE)
+    );
+    assert_eq!(
+        workspaces.previous_for(&DisplaySelector::Secondary),
+        Some(WorkspaceId::SIX)
+    );
+    assert_eq!(
+        workspaces.active_for(&DisplaySelector::Main),
+        Some(WorkspaceId::THREE)
+    );
+    assert_eq!(workspaces.previous_for(&DisplaySelector::Main), None);
+    assert!(workspaces.state().validate().is_ok());
+}
+
+#[test]
 fn moving_into_a_populated_workspace_avoids_slot_id_collisions() {
     let mut workspaces = Workspaces::default();
     let source = window(10);

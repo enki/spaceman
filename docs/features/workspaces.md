@@ -20,6 +20,13 @@ Swipe                                                      // ws.swipe
 Back-and-forth                                             // ws.back-and-forth
 └── Option+Tab / ctl back-and-forth -> previous workspace of the focused display's lane
 
+Move workspace to another display                          // ws.move-workspace
+├── Option+Shift+Tab / ctl move-workspace [next|prev|<display>]
+├── Orders displays left-to-right; wraps around for next/prev; persists assignment to config.toml
+├── Reveals & lays out source display's previous workspace -> lays out moved workspace on target
+│   -> parks target's displaced workspace (which becomes target's Option+Tab previous)
+└── Preserves Fullscreen Layout and focus on the moved workspace; shows HUD on both displays
+
 Move window without switching                              // ws.move-window
 ├── Option+Shift+<ws> / ctl move <ws> -> window parked on target, current workspace reflows
 └── ctl move-app <bundle-id> <ws>     -> every current window of that app
@@ -82,10 +89,11 @@ with the original frame persisted to `parked-windows.json` first.
 Keyboard (while tiling is enabled)
 ├── Option+<1..0 | A..Z>        -> switch
 ├── Option+Shift+<1..0 | A..Z>  -> move focused window
-└── Option+Tab                  -> back-and-forth
+├── Option+Tab                  -> back-and-forth
+└── Option+Shift+Tab            -> move focused workspace to next display
 Trackpad: three-finger swipe left/right -> next/previous workspace (turn macOS's three-finger
           "Swipe between full-screen applications" off or move it to four fingers)
-CLI: spaceman ctl switch | back-and-forth | move | move-app
+CLI: spaceman ctl switch | back-and-forth | move-workspace | move | move-app
 Config: ~/Library/Application Support/Spaceman/config.toml -> [[rules]], [[workspaces]] (edits apply when the file changes; new named-workspace shortcuts register on the next app start)
 Menu bar: shows the active workspace glyphs; its menu lists each display's visible workspace (checked)
           and occupied ones with their apps' icons and Option shortcut -> choose one to switch
@@ -103,7 +111,13 @@ on the same letter.
   (`reliability.rs`, rollback), `moving_to_an_inactive_workspace_does_not_switch`,
   `focusing_a_parked_window_activates_its_workspace`,
   `workspace_back_and_forth_tracks_each_display_lane_independently`,
-  `switching_to_an_unconfigured_named_workspace_is_rejected`.
+  `switching_to_an_unconfigured_named_workspace_is_rejected`,
+  `move_workspace_to_occupied_display_promotes_source_previous_and_parks_displaced`,
+  `move_workspace_to_empty_display_and_three_display_wrap_around`,
+  `move_workspace_single_display_is_a_noop`,
+  `move_workspace_preserves_fullscreen_layout_and_focused_tile`,
+  `move_workspace_persisted_assignment_survives_config_reload`,
+  `move_workspace_replaces_unplugged_assignment_and_rolls_back_on_error`.
 - Unit (FakeBackend), `src/app/tests/switching.rs`:
   `status_menu_lists_each_displays_visible_and_occupied_workspaces` (menu rows per display, checks,
   app order). The AppKit rows themselves (icons, tooltip of app names) are not covered.
@@ -165,7 +179,9 @@ on the same letter.
   unknown). A listen-only key tap sees an Option shortcut Carbon didn't take; after 750 ms the agent
   logs `hotkey: <name> pressed but macOS did not deliver it`, registers every shortcut again (at
   most every 5 s) and runs the missed action. Each delivered press logs `hotkey: <name>`.
-- Rules and display assignments are read only at startup; `ctl restart` exits but does not relaunch.
+- Config edits (rules, display assignments, and HUD settings) reload automatically before the next
+  command; new named-workspace hotkeys register on the next app start, and `ctl restart` exits
+  without relaunching.
 - The HUD's first appearance after launch only fades in: its panel has drawn nothing yet for the
   capsule to rise from. Every later one enters with the full motion.
 - Try the HUD's motion without switching workspaces in the Playground (`⇧⌘D`, HUD > hud-switch):

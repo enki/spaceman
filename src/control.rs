@@ -12,7 +12,7 @@ use std::{
 };
 
 use crate::{
-    ResizeDirection, WorkspaceId,
+    DisplaySelector, DisplayTarget, ResizeDirection, WorkspaceId,
     app::{Action, WorkerAction},
 };
 
@@ -21,7 +21,7 @@ const REQUEST_READ_TIMEOUT: Duration = Duration::from_millis(250);
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(6);
 
-pub const COMMAND_USAGE: &str = "status|debug|settings|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move WORKSPACE|move-app ID WORKSPACE|focus DIR|focus next|move-direction DIR|layout|fullscreen|resize shrink|resize grow|balance|pause|resume|retile|wrong|restart|quit";
+pub const COMMAND_USAGE: &str = "status|debug|settings|open-settings|open-accessibility|check-for-updates|toggle-launch-at-login|switch WORKSPACE|back-and-forth|move-workspace [next|prev|DISPLAY]|move WORKSPACE|move-app ID WORKSPACE|focus DIR|focus next|move-direction DIR|layout|fullscreen|resize shrink|resize grow|balance|pause|resume|retile|wrong|restart|quit";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Command {
@@ -181,7 +181,18 @@ fn socket_path() -> Result<PathBuf, String> {
 }
 
 fn parse_line(line: &str) -> Result<Command, String> {
-    let parts = line.split_whitespace().collect::<Vec<_>>();
+    let trimmed = line.trim();
+    if let Some(rest) = trimmed.strip_prefix("move-workspace")
+        && (rest.is_empty() || rest.starts_with(char::is_whitespace))
+    {
+        let target = match rest.trim() {
+            "" | "next" => DisplayTarget::Next,
+            "prev" => DisplayTarget::Prev,
+            display => DisplayTarget::Selector(DisplaySelector::parse(display)),
+        };
+        return Ok(Command::Queue(WorkerAction::MoveWorkspaceToDisplay(target)));
+    }
+    let parts = trimmed.split_whitespace().collect::<Vec<_>>();
     let action = match parts.as_slice() {
         ["status"] => return Ok(Command::Status),
         ["debug"] => return Ok(Command::Debug),
@@ -232,6 +243,35 @@ mod tests {
             queued("back-and-forth"),
             WorkerAction::WorkspaceBackAndForth
         );
+        assert_eq!(
+            queued("move-workspace"),
+            WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Next)
+        );
+        assert_eq!(
+            queued("move-workspace next"),
+            WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Next)
+        );
+        assert_eq!(
+            queued("move-workspace prev"),
+            WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Prev)
+        );
+        assert_eq!(
+            queued("move-workspace main"),
+            WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Selector(DisplaySelector::Main))
+        );
+        assert_eq!(
+            queued("move-workspace secondary"),
+            WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Selector(
+                DisplaySelector::Secondary
+            ))
+        );
+        assert_eq!(
+            queued("move-workspace Studio Display"),
+            WorkerAction::MoveWorkspaceToDisplay(DisplayTarget::Selector(
+                DisplaySelector::Preferred("Studio Display".into())
+            ))
+        );
+        assert!(parse_line("move-workspace-extra").is_err());
         assert_eq!(
             queued("switch 10"),
             WorkerAction::SwitchWorkspace(WorkspaceId::new(10).unwrap())

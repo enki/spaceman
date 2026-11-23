@@ -443,6 +443,7 @@ const SHORTCUTS: &[(&str, &[&[&str]])] = &[
     ("Switch to a named workspace", &[&["⌥", "A…Z"]]),
     ("Move window to a named workspace", &[&["⌥", "⇧", "A…Z"]]),
     ("Previous workspace on this display", &[&["⌥", "Tab"]]),
+    ("Move workspace to next display", &[&["⌥", "⇧", "Tab"]]),
     ("Next window in the workspace", &[&["⌥", "`"]]),
     ("Focus left, down, up, right", &[&["⌥", "H J K L"]]),
     ("Move tile left, down, up, right", &[&["⌥", "⇧", "H J K L"]]),

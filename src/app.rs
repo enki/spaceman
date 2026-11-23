@@ -11,8 +11,8 @@ use std::{
 };
 
 use crate::{
-    AppInstanceId, BindingState, Decision, Direction, DisplaySelector, NavigationTile,
-    ResizeDirection, Settings, WorkspaceId, Workspaces,
+    AppInstanceId, BindingState, Decision, Direction, DisplaySelector, DisplayTarget,
+    NavigationTile, ResizeDirection, Settings, WorkspaceId, Workspaces,
     config::{Config, WindowDisposition},
     control::{self, Command as ControlCommand, Request as ControlRequest},
     hotkeys::{DeliveryWatch, HotkeyPlan, Hotkeys},
@@ -50,6 +50,7 @@ mod input;
 mod journal;
 mod memory;
 mod minimums;
+mod move_workspace;
 mod parking;
 mod runtime;
 mod state_writer;
@@ -173,6 +174,7 @@ pub(crate) enum WorkerAction {
     Retile,
     SwitchWorkspace(WorkspaceId),
     WorkspaceBackAndForth,
+    MoveWorkspaceToDisplay(DisplayTarget),
     /// A trackpad swipe, stepping through the occupied workspaces of the display
     /// under the pointer.
     Swipe(Swipe, (i32, i32)),
@@ -195,6 +197,7 @@ impl WorkerAction {
             Self::Retile => "retile queued".into(),
             Self::SwitchWorkspace(workspace) => format!("switch to workspace {workspace} queued"),
             Self::WorkspaceBackAndForth => "workspace back-and-forth queued".into(),
+            Self::MoveWorkspaceToDisplay(_) => "move workspace to display queued".into(),
             Self::Swipe(..) => "swipe queued".into(),
             Self::MoveFocused(workspace) => format!("move to workspace {workspace} queued"),
             Self::MoveApp(_, workspace) => format!("move app to workspace {workspace} queued"),

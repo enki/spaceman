@@ -4,6 +4,45 @@
 use super::*;
 
 impl<B: WorkspaceBackend> WorkspaceRuntime<B> {
+    /// Per display, its visible workspace and every other workspace holding windows.
+    pub(super) fn workspace_menu(
+        &self,
+        visible: &[ResolvedWorkspace],
+        outputs: &macos::DisplayOutputs,
+    ) -> Vec<status_item::DisplayWorkspaces> {
+        outputs
+            .displays()
+            .iter()
+            .filter_map(|display| {
+                let current = visible
+                    .iter()
+                    .find(|resolved| resolved.display_id == display.id)
+                    .map(|resolved| resolved.workspace);
+                let workspaces = self
+                    .listed_workspaces(&display.id, current, outputs)
+                    .into_iter()
+                    .map(|workspace| {
+                        let mut apps = Vec::new();
+                        for window in self.workspaces.windows(workspace) {
+                            if !apps.contains(&window.app.pid) {
+                                apps.push(window.app.pid);
+                            }
+                        }
+                        status_item::MenuWorkspace {
+                            workspace,
+                            current: current == Some(workspace),
+                            apps,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                (!workspaces.is_empty()).then(|| status_item::DisplayWorkspaces {
+                    display: display.name.clone(),
+                    workspaces,
+                })
+            })
+            .collect()
+    }
+
     /// The HUD for an action on `workspace`. `from` is the workspace a switch left on that
     /// workspace's display, so the HUD can start there.
     pub(super) fn hud_for(
